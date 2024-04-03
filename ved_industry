@@ -1,0 +1,94 @@
+#pip install selenium
+
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+from tqdm import tqdm
+
+from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+import csv
+import pandas as pd
+
+# Открыть сразу на весь экран
+chrome_options = Options()
+chrome_options.add_argument('--start-maximized')
+
+driver=webdriver.Chrome(options=chrome_options)
+
+driver.get('https://www.vedomosti.ru/industry')
+
+import random as rd
+
+# html = driver.find_element(By.XPATH,'//body')
+total_scroled = 0
+
+
+# Определяем длину страницы
+page_height = driver.execute_script("return document.body.scrollHeight")
+
+# Скролим вниз, пока не достигнем конца страницы
+while total_scroled < page_height:
+    html = driver.find_elements("xpath", "//a[@class='waterfall__item-title']")[-1]
+    html.send_keys(Keys.PAGE_DOWN)
+    total_scroled += 400
+    time.sleep(.5)
+
+soup = BeautifulSoup(driver.page_source, "html.parser")
+
+# Получаем все ссылки
+a_class = 'waterfall__item-title'
+elements = soup.find_all('a', class_=a_class)
+
+links = []
+for elem in elements:
+    links.append('https://www.vedomosti.ru' + elem['href'])
+
+def get_content(url):
+
+    articles = requests.get(url)
+    soup = BeautifulSoup(articles.text, "html.parser")
+    
+    # Находим элементы с текстом статьи (обычно это теги <p> или <div>)
+    article_text = soup.find_all('p', "box-paragraph__text")
+    
+    
+    # Извлекаем текст из найденных элементов
+    text = ''
+    for paragraph in article_text:
+
+        text += paragraph.text + ' '
+
+    text = text.replace('\n', ' ').replace('  ', ' ').strip()
+
+    title = soup.find('h1').text.strip()
+    
+    date_element = soup.find('time', class_='article-meta__date')
+
+    date = datetime.fromisoformat(date_element['datetime']).strftime("%d.%m.%Y")
+    
+    # Выводим текст статьи
+    return [url, title, text, date]
+
+columns = ['link', 'title', 'text', 'date']
+
+with open('vedomosti_industry.csv', 'w', encoding='utf-16', newline='') as file:
+    writer = csv.writer(file, delimiter=';')
+    writer.writerow(columns)
+
+for url in tqdm(links):
+    
+    row = get_content(url)
+
+    with open('vedomosti_industry.csv', 'a', encoding='utf-16', newline='') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(row)
+            
+    time.sleep(7)
+
