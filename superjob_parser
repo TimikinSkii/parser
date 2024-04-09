@@ -1,0 +1,77 @@
+#!pip3 install html5lib
+
+import requests
+import re
+
+import time
+import pandas as pd
+
+from tqdm import tqdm
+from bs4 import BeautifulSoup as BS
+
+BASE_URL = "https://www.superjob.ru"
+RESULT_XLX_FILE_PATH = r"/Users/ProNout/Desktop/Суперджоб.xlsx"
+
+
+def parse_page(url):
+    if not url.startswith(BASE_URL):
+        url = BASE_URL + url
+        
+    page_markup = requests.get(url).text
+    parser = BS(page_markup)
+        
+    title = parser.find('h1').text
+    
+    annotation_element = parser.find('div', { "class": "annotation"})
+    annotation_text = annotation_element.get_text()
+
+    content_element = annotation_element.find_next_sibling('div')
+    content_text = content_element.get_text()
+    
+    date_element = parser.find('div', { "class": "cat_comment"})
+    date = date_element.text.split('|')[1]
+    
+    table_element = content_element.find("table", {"class": "table"})
+ 
+    table_df = None
+    if table_element is not None:
+        table_df = pd.read_html(str(table_element))
+    
+    return title, annotation_text + content_text, table_df, date
+
+
+    site_name = 'SuperJob'
+
+r = requests.get(BASE_URL + '/research/?next=0').text
+soup = BS(r)
+
+max_page_num = int(soup.find_all("a", href = re.compile("\/research/?\?next=\d+"))[-1].text)
+pages_limit = max_page_num * 10 - 10
+
+table_values = []
+
+for limit in tqdm(range(0, pages_limit, 10)):
+    try:
+        r = requests.get(BASE_URL + '/research/?next=' + str(limit))
+        soup = BS(r.text)
+    
+        links = soup.find_all('a', href = re.compile(r"/research/articles/\d+/[\w-]+"))
+        urls = []
+        for link in links:
+            urls.append(link.get('href'))
+    
+        uniq_urls = set(urls)
+        for url in uniq_urls:
+            title, content, table, date = parse_page(url)
+            table_values.append({"link": 'https://ekaterinburg.superjob.ru' + url, "title": title, "content": content, 'date': date, 'name_site': site_name})
+    
+        time.sleep(5)
+    except Exception as err:
+        print(f"Ошибка парсинга: {err}")
+
+        
+df = pd.DataFrame.from_dict(table_values)  
+
+
+
+df.to_excel(r"/Users/.../Суперджоб.xlsx")
